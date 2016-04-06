@@ -151,16 +151,54 @@ parse_new(struct vcc *tl)
 	struct symbol *sy1, *sy2, *sy3;
 	struct inifin *ifp;
 	const char *p, *s_obj, *s_init, *s_struct, *s_fini;
+	char cname[128];
 	char buf1[128];
 	char buf2[128];
+	unsigned mask = 0;
 
 	vcc_NextToken(tl);
 	ExpectErr(tl, ID);
-	if (!vcc_isCid(tl->t)) {
+#define OBJ_REQ_SCOPE		"req.var."
+#define OBJ_REQ_SCOPE_LEN	(sizeof(OBJ_REQ_SCOPE) - 1)
+	if(!strncmp(tl->t->b, OBJ_REQ_SCOPE, OBJ_REQ_SCOPE_LEN) &&
+	    tl->t->e - tl->t->b > OBJ_REQ_SCOPE_LEN) {
+		tl->t->b += OBJ_REQ_SCOPE_LEN;
+		if (!vcc_isCid(tl->t)) {
+			VSB_printf(tl->sb,
+			    "Names of VCL objects cannot contain '-'\n");
+			vcc_ErrWhere(tl, tl->t);
+			return;
+		}
+		bprintf(cname, "req_var_%.*s", PF(tl->t));
+		tl->t->b -= OBJ_REQ_SCOPE_LEN;
+		mask = VCL_MET_RECV | VCL_MET_PASS | VCL_MET_HASH |
+		    VCL_MET_PURGE | VCL_MET_HIT | VCL_MET_MISS |
+		    VCL_MET_DELIVER | VCL_MET_SYNTH | VCL_MET_PIPE;
+		vcc_AddUses(tl, tl->t, mask, "cannot be set");
+#define OBJ_BEREQ_SCOPE		"bereq.var."
+#define OBJ_BEREQ_SCOPE_LEN	(sizeof(OBJ_BEREQ_SCOPE) - 1)
+	} else if (!strncmp(tl->t->b, OBJ_BEREQ_SCOPE, OBJ_BEREQ_SCOPE_LEN) &&
+	    tl->t->e - tl->t->b > OBJ_BEREQ_SCOPE_LEN) {
+		tl->t->b += OBJ_BEREQ_SCOPE_LEN;
+		if (!vcc_isCid(tl->t)) {
+			VSB_printf(tl->sb,
+			    "Names of VCL objects cannot contain '-'\n");
+			vcc_ErrWhere(tl, tl->t);
+			return;
+		}
+		bprintf(cname, "bereq_var_%.*s", PF(tl->t));
+		tl->t->b -= OBJ_BEREQ_SCOPE_LEN;
+		mask = VCL_MET_BACKEND_FETCH | VCL_MET_BACKEND_RESPONSE |
+		    VCL_MET_BACKEND_ERROR;
+		vcc_AddUses(tl, tl->t, mask, "cannot be set");
+	} else if (!vcc_isCid(tl->t)) {
 		VSB_printf(tl->sb,
 		    "Names of VCL objects cannot contain '-'\n");
 		vcc_ErrWhere(tl, tl->t);
 		return;
+	} else {
+		vcc_AddUses(tl, tl->t, VCL_MET_INIT, "cannot be set");
+		bprintf(cname, "%.*s", PF(tl->t));
 	}
 	sy1 = VCC_FindSymbol(tl, tl->t, SYM_NONE);
 	if (sy1 != NULL) {
@@ -181,6 +219,7 @@ parse_new(struct vcc *tl)
 	sy1 = VCC_AddSymbolTok(tl, tl->t, SYM_NONE);	// XXX: NONE ?
 	XXXAN(sy1);
 	sy1->def_b = tl->t;
+	sy1->r_methods = mask;
 	vcc_NextToken(tl);
 
 	ExpectErr(tl, '=');
@@ -218,23 +257,41 @@ parse_new(struct vcc *tl)
 		p++;
 	p += 2;
 
-	Fh(tl, 0, "static %s *vo_%s;\n\n", s_struct, sy1->name);
+	Fh(tl, 0, "static %s *vo_%s;\n\n", s_struct, cname);
+
+	if(mask) {
+		Fh(tl, 0, "void vo_free_%s(void *);\n\n", cname);
+		Fc(tl, 0, "void vo_free_%s(void *priv) {\n", cname);
+		Fc(tl, 0, "  %s((%s**)&priv);\n", s_fini, s_struct);
+		Fc(tl, 0, "}\n\n");
+		bprintf(buf1, ", (%s**)\n  "
+		    "VRT_priv_task_object(ctx, &vo_%s, &vo_free_%s),\n  \"%s\"",
+		    s_struct, cname, cname, cname);
+	}
+	else
+		bprintf(buf1, ", &vo_%s, \"%s\"", cname, cname);
 
 	vcc_NextToken(tl);
 
-	bprintf(buf1, ", &vo_%s, \"%s\"", sy1->name, sy1->name);
 	vcc_Eval_Func(tl, s_init, buf1, sy2->name, s_init + strlen(s_init) + 1);
-	ifp = New_IniFin(tl);
-	VSB_printf(ifp->fin, "\t\t%s(&vo_%s);", s_fini, sy1->name);
+	if(!mask) {
+		ifp = New_IniFin(tl);
+		VSB_printf(ifp->fin, "\t\t%s(&vo_%s);", s_fini, cname);
+	}
 	ExpectErr(tl, ';');
 
-	bprintf(buf1, ", vo_%s", sy1->name);
+	if(mask)
+		bprintf(buf1, ", (%s*)\n  ((VRT_priv_task(ctx, &vo_%s))->priv)",
+		    s_struct, cname);
+	else
+		bprintf(buf1, ", vo_%s", cname);
 	/* Split the methods from the args */
 	while (*p != '\0') {
 		p += strlen(s_obj);
 		bprintf(buf2, "%s%s", sy1->name, p);
 		sy3 = VCC_AddSymbolStr(tl, buf2, SYM_FUNC);
 		AN(sy3);
+		sy3->r_methods = mask;
 		sy3->eval = vcc_Eval_SymFunc;
 		p += strlen(p) + 1;
 		sy3->cfunc = p;
@@ -407,7 +464,7 @@ static struct action_table {
 	{ "ban",		parse_ban },
 	{ "call",		parse_call },
 	{ "hash_data",		parse_hash_data, VCL_MET_HASH },
-	{ "new",		parse_new, VCL_MET_INIT},
+	{ "new",		parse_new },
 	{ "return",		parse_return },
 	{ "set",		parse_set },
 	{ "synthetic",		parse_synthetic,

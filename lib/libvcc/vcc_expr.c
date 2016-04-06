@@ -800,6 +800,8 @@ vcc_Eval_SymFunc(struct vcc *tl, struct expr **e, const struct symbol *sym)
 	AN(sym->cfunc);
 	AN(sym->name);
 	AN(sym->args);
+	if(sym->r_methods)
+		vcc_AddUses(tl, tl->t, sym->r_methods, "Not available");
 	SkipToken(tl, ID);
 	vcc_func(tl, e, sym->cfunc, sym->extra, sym->name, sym->args);
 }
