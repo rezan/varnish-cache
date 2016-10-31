@@ -267,11 +267,40 @@ vcc_ParseNew(struct vcc *tl)
 {
 	struct symbol *sy1, *sy2, *sy3;
 	struct inifin *ifp;
-	const char *p, *s_obj;
+	const char *p, *s_obj, *s_struct, *s_fini, *pp;
 	char buf1[128];
 	char buf2[128];
+	unsigned mask = 0;
 
 	vcc_NextToken(tl);
+
+	/* Check for scope cast */
+	if (tl->t->tok == '(') {
+		vcc_NextToken(tl);
+		if (!strncmp(tl->t->b, "req", 3) &&
+		     tl->t->e - tl->t->b == 3) {
+			mask = VCL_MET_RECV | VCL_MET_PASS | VCL_MET_HASH |
+			    VCL_MET_PURGE | VCL_MET_HIT | VCL_MET_MISS |
+			    VCL_MET_DELIVER | VCL_MET_SYNTH | VCL_MET_PIPE;
+			vcc_AddUses(tl, tl->t, mask, "cannot be set");
+		} else if (!strncmp(tl->t->b, "bereq", 5) &&
+		    tl->t->e - tl->t->b == 5) {
+			mask = VCL_MET_BACKEND_FETCH | VCL_MET_BACKEND_RESPONSE |
+			    VCL_MET_BACKEND_ERROR;
+			vcc_AddUses(tl, tl->t, mask, "cannot be set");
+		} else {
+			VSB_printf(tl->sb, "Invalid variable scope ");
+			vcc_ErrToken(tl, tl->t);
+			vcc_ErrWhere(tl, tl->t);
+			return;
+		}
+		vcc_NextToken(tl);
+		ExpectErr(tl, ')');
+		vcc_NextToken(tl);
+	}
+	else
+		vcc_AddUses(tl, tl->t, VCL_MET_INIT, "cannot be set");
+
 	ExpectErr(tl, ID);
 	vcc_ExpectCid(tl, "VCL object");
 	ERRCHK(tl);
@@ -280,6 +309,8 @@ vcc_ParseNew(struct vcc *tl)
 
 	/* We allow implicit use of VMOD objects:  Pretend it's ref'ed */
 	sy1->nref++;
+
+	sy1->r_methods = mask;
 
 	vcc_NextToken(tl);
 
@@ -302,32 +333,54 @@ vcc_ParseNew(struct vcc *tl)
 	s_obj = p;
 	p += strlen(p) + 1;
 
+	s_struct = p;
+
 	Fh(tl, 0, "static %s *vo_%s;\n\n", p, sy1->name);
 	p += strlen(p) + 1;
 
-	bprintf(buf1, ", &vo_%s, \"%s\"", sy1->name, sy1->name);
-	vcc_Eval_Func(tl, p, buf1, sy2);
+	pp = p;
+
+	while (p[0] != '\0' || p[1] != '\0' || p[2] != '\0')
+		p++;
+	p += 3;
+
+	p += strlen(p) + 1;
+
+	s_fini = p;
+
+	if(mask) {
+		Fh(tl, 0, "void vo_free_%s(void *);\n\n", sy1->name);
+		Fc(tl, 0, "void vo_free_%s(void *priv) {\n", sy1->name);
+		Fc(tl, 0, "  %s((%s**)&priv);\n", s_fini, s_struct);
+		Fc(tl, 0, "}\n\n");
+		bprintf(buf1, ", (%s**)\n  "
+		    "VRT_priv_task_object(ctx, &vo_%s, &vo_free_%s),\n  \"%s\"",
+		    s_struct, sy1->name, sy1->name, sy1->name);
+	} else {
+		bprintf(buf1, ", &vo_%s, \"%s\"", sy1->name, sy1->name);
+		ifp = New_IniFin(tl);
+		VSB_printf(ifp->fin, "\t\t%s(&vo_%s);", s_fini, sy1->name);
+	}
+
+	vcc_Eval_Func(tl, pp, buf1, sy2);
 	ExpectErr(tl, ';');
 
 	while (p[0] != '\0' || p[1] != '\0' || p[2] != '\0')
 		p++;
 	p += 3;
 
-	ifp = New_IniFin(tl);
-	p += strlen(p) + 1;
-	VSB_printf(ifp->fin, "\t\t%s(&vo_%s);", p, sy1->name);
-
-	while (p[0] != '\0' || p[1] != '\0' || p[2] != '\0')
-		p++;
-	p += 3;
-
 	/* Instantiate symbols for the methods */
-	bprintf(buf1, ", vo_%s", sy1->name);
+	if(mask)
+		bprintf(buf1, ", (%s*)\n  ((VRT_priv_task(ctx, &vo_%s))->priv)",
+		    s_struct, sy1->name);
+	else
+		bprintf(buf1, ", vo_%s", sy1->name);
 	while (*p != '\0') {
 		p += strlen(s_obj);
 		bprintf(buf2, "%s%s", sy1->name, p);
 		sy3 = VCC_Symbol(tl, NULL, buf2, NULL, SYM_FUNC, 1);
 		AN(sy3);
+		sy3->r_methods = mask;
 		sy3->eval = vcc_Eval_SymFunc;
 		p += strlen(p) + 1;
 		sy3->eval_priv = p;

@@ -363,7 +363,7 @@ static struct action_table {
 	{ "ban",		parse_ban },
 	{ "call",		parse_call },
 	{ "hash_data",		parse_hash_data, VCL_MET_HASH },
-	{ "new",		vcc_ParseNew, VCL_MET_INIT},
+	{ "new",		vcc_ParseNew },
 	{ "return",		parse_return },
 	{ "set",		parse_set },
 	{ "synthetic",		parse_synthetic,

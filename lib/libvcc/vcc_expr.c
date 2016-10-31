@@ -737,6 +737,9 @@ vcc_Eval_SymFunc(struct vcc *tl, struct expr **e, const struct symbol *sym,
 	assert(sym->kind == SYM_FUNC);
 	AN(sym->eval_priv);
 
+	if(sym->r_methods)
+		vcc_AddUses(tl, tl->t, sym->r_methods, "Not available");
+
 	SkipToken(tl, ID);
 	assert(sym->fmt == VCC_Type(sym->eval_priv));
 	vcc_func(tl, e, sym->eval_priv, sym->extra, sym);
