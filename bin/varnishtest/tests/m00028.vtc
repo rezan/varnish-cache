@@ -1,0 +1,48 @@
+varnishtest "Test top VMOD object scope"
+
+server s1 {
+	rxreq
+	expect req.url == "/a"
+	expect req.http.r0 == "/a0"
+	expect req.http.t0 == "/a0"
+	txresp -body {
+		<html>
+		<esi:include src="/fragment"/>
+	}
+
+	rxreq
+	expect req.url == "/fragment"
+	expect req.http.r0 == "/fragment1"
+	expect req.http.t0 == "/a0"
+	txresp
+
+	rxreq
+	expect req.url == "/b"
+	expect req.http.r0 == "/b0"
+	expect req.http.t0 == "/b0"
+	txresp
+} -start
+
+varnish v1 -vcl+backend {
+	import debug;
+
+	sub vcl_recv {
+		new (req) r0 = debug.obj(req.url + req.esi_level);
+		set req.http.r0 = r0.string();
+		new (top) t0 = debug.obj(req.url + req.esi_level);
+		set req.http.t0 = t0.string();
+	}
+
+	sub vcl_backend_response {
+		set beresp.do_esi = true;
+	}
+} -start
+
+
+client c1 {
+	txreq -url /a
+	rxresp
+
+	txreq -url /b
+	rxresp
+} -run

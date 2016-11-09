@@ -341,6 +341,7 @@ void VRT_priv_fini(const struct vmod_priv *p);
 struct vmod_priv *VRT_priv_task(VRT_CTX, void *vmod_id);
 struct vmod_priv *VRT_priv_top(VRT_CTX, void *vmod_id);
 void **VRT_priv_task_object(VRT_CTX, void *vmod_id, vmod_priv_free_f *free);
+void **VRT_priv_top_object(VRT_CTX, void *vmod_id, vmod_priv_free_f *free);
 
 /* Stevedore related functions */
 int VRT_Stv(const char *nm);

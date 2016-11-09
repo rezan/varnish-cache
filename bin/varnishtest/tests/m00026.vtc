@@ -15,6 +15,7 @@ varnish v1 -vcl+backend {
 	sub vcl_recv {
 		new (req) r0 = debug.obj("r0");
 		new (req) r1 = debug.obj(req.http.r1);
+		new (top) t0 = debug.obj("t0");
 	}
 
 	sub vcl_backend_response {
@@ -26,6 +27,7 @@ varnish v1 -vcl+backend {
 		set resp.http.g0 = g0.string();
 		set resp.http.r0 = r0.string();
 		set resp.http.r1 = r1.string();
+		set resp.http.t0 = t0.string();
 	}
 } -start
 
@@ -35,5 +37,6 @@ client c1 {
 	expect resp.http.g0 == "g0"
 	expect resp.http.r0 == "r0"
 	expect resp.http.r1 == "r1_header"
+	expect resp.http.t0 == "t0"
 	expect resp.http.b0 == "b0"
 } -run

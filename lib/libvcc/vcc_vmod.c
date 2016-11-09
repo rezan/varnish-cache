@@ -270,7 +270,7 @@ vcc_ParseNew(struct vcc *tl)
 	const char *p, *s_obj, *s_struct, *s_spec, *s_fini;
 	char buf1[128];
 	char buf2[128];
-	unsigned mask = 0;
+	unsigned mask = 0, top = 0;
 
 	vcc_NextToken(tl);
 
@@ -282,6 +282,13 @@ vcc_ParseNew(struct vcc *tl)
 			mask = VCL_MET_RECV | VCL_MET_PASS | VCL_MET_HASH |
 			    VCL_MET_PURGE | VCL_MET_HIT | VCL_MET_MISS |
 			    VCL_MET_DELIVER | VCL_MET_SYNTH | VCL_MET_PIPE;
+			vcc_AddUses(tl, tl->t, mask, "cannot be set");
+		} else if (!strncmp(tl->t->b, "top", 3) &&
+		     tl->t->e - tl->t->b == 3) {
+			mask = VCL_MET_RECV | VCL_MET_PASS | VCL_MET_HASH |
+			    VCL_MET_PURGE | VCL_MET_HIT | VCL_MET_MISS |
+			    VCL_MET_DELIVER | VCL_MET_SYNTH | VCL_MET_PIPE;
+			top = 1;
 			vcc_AddUses(tl, tl->t, mask, "cannot be set");
 		} else if (!strncmp(tl->t->b, "bereq", 5) &&
 		    tl->t->e - tl->t->b == 5) {
@@ -349,14 +356,20 @@ vcc_ParseNew(struct vcc *tl)
 
 	s_fini = p;
 
-	if(mask) {
+	if (mask) {
 		Fh(tl, 0, "void vo_free_%s(void *);\n\n", sy1->name);
 		Fc(tl, 0, "void vo_free_%s(void *priv) {\n", sy1->name);
 		Fc(tl, 0, "  %s((%s**)&priv);\n", s_fini, s_struct);
 		Fc(tl, 0, "}\n\n");
+		if (top) {
+			Fb(tl, tl->indent,
+			    "if (VRT_r_req_esi_level(ctx) == 0) {\n");
+			tl->indent += INDENT;
+		}
 		bprintf(buf1, ", (%s**)\n  "
-		    "VRT_priv_task_object(ctx, &vo_%s, &vo_free_%s),\n  \"%s\"",
-		    s_struct, sy1->name, sy1->name, sy1->name);
+		    "VRT_priv_%s_object(ctx, &vo_%s, &vo_free_%s),\n  \"%s\"",
+		    s_struct, top ? "top" : "task", sy1->name, sy1->name,
+		    sy1->name);
 	} else {
 		bprintf(buf1, ", &vo_%s, \"%s\"", sy1->name, sy1->name);
 		ifp = New_IniFin(tl);
@@ -366,14 +379,19 @@ vcc_ParseNew(struct vcc *tl)
 	vcc_Eval_Func(tl, s_spec, buf1, sy2);
 	ExpectErr(tl, ';');
 
+	if (mask && top) {
+		tl->indent -= INDENT;
+		Fb(tl, tl->indent, "}\n");
+	}
+
 	while (p[0] != '\0' || p[1] != '\0' || p[2] != '\0')
 		p++;
 	p += 3;
 
 	/* Instantiate symbols for the methods */
-	if(mask)
-		bprintf(buf1, ", (%s*)\n  ((VRT_priv_task(ctx, &vo_%s))->priv)",
-		    s_struct, sy1->name);
+	if (mask)
+		bprintf(buf1, ", (%s*)\n  ((VRT_priv_%s(ctx, &vo_%s))->priv)",
+		    s_struct, top ? "top" : "task", sy1->name);
 	else
 		bprintf(buf1, ", vo_%s", sy1->name);
 	while (*p != '\0') {

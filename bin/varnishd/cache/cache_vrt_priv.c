@@ -162,6 +162,16 @@ VRT_priv_task_object(VRT_CTX, void *vmod_id, vmod_priv_free_f *free)
 	return (&priv->priv);
 }
 
+void **
+VRT_priv_top_object(VRT_CTX, void *vmod_id, vmod_priv_free_f *free)
+{
+	struct vmod_priv *priv;
+
+	priv = VRT_priv_top(ctx, vmod_id);
+	priv->free = free;
+	return (&priv->priv);
+}
+
 /*--------------------------------------------------------------------
  */
 
