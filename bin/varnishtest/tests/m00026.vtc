@@ -1,0 +1,39 @@
+varnishtest "Test vmod objects in different scopes"
+
+server s1 {
+	rxreq
+	txresp
+} -start
+
+varnish v1 -vcl+backend {
+	import debug;
+
+	sub vcl_init {
+		new g0 = debug.obj("g0");
+	}
+
+	sub vcl_recv {
+		new (req) r0 = debug.obj("r0");
+		new (req) r1 = debug.obj(req.http.r1);
+	}
+
+	sub vcl_backend_response {
+		new (bereq) b0 = debug.obj("b0");
+		set beresp.http.b0 = b0.string();
+	}
+
+	sub vcl_deliver {
+		set resp.http.g0 = g0.string();
+		set resp.http.r0 = r0.string();
+		set resp.http.r1 = r1.string();
+	}
+} -start
+
+client c1 {
+	txreq -hdr "r1: r1_header"
+	rxresp
+	expect resp.http.g0 == "g0"
+	expect resp.http.r0 == "r0"
+	expect resp.http.r1 == "r1_header"
+	expect resp.http.b0 == "b0"
+} -run

@@ -1,0 +1,55 @@
+varnishtest "Errors for vmod object scopes"
+
+varnish v1 -errvcl {'g0': cannot be set in method 'vcl_recv'.} {
+	import debug;
+	backend default { .host = "0.0.0.0"; }
+	sub vcl_recv {
+		new g0 = debug.obj();
+	}
+}
+
+varnish v1 -errvcl {'bereq': cannot be set in method 'vcl_recv'.} {
+	import debug;
+	backend default { .host = "0.0.0.0"; }
+	sub vcl_recv {
+		new (bereq)r0 = debug.obj();
+	}
+}
+
+varnish v1 -errvcl {'req': cannot be set in method 'vcl_backend_response'.} {
+	import debug;
+	backend default { .host = "0.0.0.0"; }
+	sub vcl_backend_response {
+		new (req)b0 = debug.obj();
+	}
+}
+
+varnish v1 -errvcl {Invalid variable scope 'xyz'.} {
+	import debug;
+	backend default { .host = "0.0.0.0"; }
+	sub vcl_recv {
+		new (xyz)r0 = debug.obj();
+	}
+}
+
+varnish v1 -errvcl {'r0.string': Not available in method 'vcl_backend_fetch'.} {
+	import debug;
+	backend default { .host = "0.0.0.0"; }
+	sub vcl_recv {
+		new (req)r0 = debug.obj();
+	}
+	sub vcl_backend_fetch {
+		r0.string();
+	}
+}
+
+varnish v1 -errvcl {'b0.string': Not available in method 'vcl_deliver'.} {
+	import debug;
+	backend default { .host = "0.0.0.0"; }
+	sub vcl_backend_response {
+		new (bereq)b0 = debug.obj();
+	}
+	sub vcl_deliver {
+		b0.string();
+	}
+}

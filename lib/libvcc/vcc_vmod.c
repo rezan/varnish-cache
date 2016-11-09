@@ -267,7 +267,7 @@ vcc_ParseNew(struct vcc *tl)
 {
 	struct symbol *sy1, *sy2, *sy3;
 	struct inifin *ifp;
-	const char *p, *s_obj, *s_struct, *s_fini, *pp;
+	const char *p, *s_obj, *s_struct, *s_spec, *s_fini;
 	char buf1[128];
 	char buf2[128];
 	unsigned mask = 0;
@@ -291,6 +291,7 @@ vcc_ParseNew(struct vcc *tl)
 		} else {
 			VSB_printf(tl->sb, "Invalid variable scope ");
 			vcc_ErrToken(tl, tl->t);
+			VSB_printf(tl->sb, ".\n");
 			vcc_ErrWhere(tl, tl->t);
 			return;
 		}
@@ -338,7 +339,7 @@ vcc_ParseNew(struct vcc *tl)
 	Fh(tl, 0, "static %s *vo_%s;\n\n", p, sy1->name);
 	p += strlen(p) + 1;
 
-	pp = p;
+	s_spec = p;
 
 	while (p[0] != '\0' || p[1] != '\0' || p[2] != '\0')
 		p++;
@@ -362,7 +363,7 @@ vcc_ParseNew(struct vcc *tl)
 		VSB_printf(ifp->fin, "\t\t%s(&vo_%s);", s_fini, sy1->name);
 	}
 
-	vcc_Eval_Func(tl, pp, buf1, sy2);
+	vcc_Eval_Func(tl, s_spec, buf1, sy2);
 	ExpectErr(tl, ';');
 
 	while (p[0] != '\0' || p[1] != '\0' || p[2] != '\0')
