@@ -463,7 +463,8 @@ TIME
 VCL_SUB
 	C-type: ``const struct vcl_sub *``
 
-	Opaque handle on a VCL subroutine.
+	Opaque handle on a VCL subroutine with both compile time
+	and runtime checking.
 
 	References to subroutines can be passed into VMODs as
 	arguments and called later through ``VRT_call()``. The scope
@@ -482,6 +483,13 @@ VCL_SUB
 	would succeed in order to avoid the potential VCL failure.  It
 	returns ``NULL`` if ``VRT_call()`` would make the call or an
 	error string why not.
+
+VCL_SUB_LAZY
+	C-type: ``const struct vcl_sub *``
+
+	Opaque handle on a VCL subroutine with lazy runtime checking only.
+
+	Behaves the same as ``VCL_SUB``.
 
 VOID
 	C-type: ``void``
