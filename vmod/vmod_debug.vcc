@@ -340,3 +340,7 @@ Store a sub
 $Function SUB total_recall()
 
 Get a stored sub
+
+$Function VOID call(SUB)
+
+Call a sub

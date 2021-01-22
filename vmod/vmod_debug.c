@@ -1319,3 +1319,9 @@ xyzzy_total_recall(VRT_CTX)
 
 	return (sub_stored);
 }
+
+VCL_VOID v_matchproto_(td_xyzzy_call)
+xyzzy_call(VRT_CTX, VCL_SUB sub)
+{
+	VRT_call(ctx, sub);
+}

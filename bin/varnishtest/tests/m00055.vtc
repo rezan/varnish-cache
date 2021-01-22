@@ -1,0 +1,20 @@
+varnishtest "VCL_SUB and compile time checking"
+
+server s1 {
+} -start
+
+varnish v1 -vcl+backend {} -start
+
+varnish v1 -errvcl {Cannot be set from subroutine 'vcl_recv'} {
+	import debug;
+
+	backend default none;
+
+	sub foo {
+		set bereq.http.it = "bereq is a compile time error here";
+	}
+
+	sub vcl_recv {
+		debug.call(foo);
+	}
+}
